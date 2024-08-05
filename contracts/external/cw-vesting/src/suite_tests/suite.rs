@@ -39,6 +39,7 @@ impl Default for SuiteBuilder {
                 start_time: None,
                 vesting_duration_seconds: 60 * 60 * 24 * 7, // one week
                 unbonding_duration_seconds: staking_defaults.unbonding_time,
+                mass_distribution: None,
             },
         }
     }
@@ -351,7 +352,7 @@ impl Suite {
     pub fn query_distributable(&self) -> Uint128 {
         self.app
             .wrap()
-            .query_wasm_smart(&self.vesting, &QueryMsg::Distributable { t: None })
+            .query_wasm_smart(&self.vesting, &QueryMsg::Distributable { t: None, owner: None })
             .unwrap()
     }
 

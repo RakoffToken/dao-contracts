@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Timestamp, Uint128};
+use cosmwasm_std::{Decimal, Timestamp, Uint128};
 use cw20::Cw20ReceiveMsg;
 use cw_denom::UncheckedDenom;
 use cw_ownable::cw_ownable_execute;
@@ -58,6 +58,13 @@ pub struct InstantiateMsg {
     /// external calculations with correct values to withdraw
     /// avaliable funds from the contract.
     pub unbonding_duration_seconds: u64,
+
+    /// This is the mass_distribution parameter. If it is set to a
+    /// value (which is non-zero lenght), then the recipient will
+    /// be overwritten. In this case, distribution will be done according
+    /// to the mass_distribution parameter (distribute the distribution
+    /// amount according to the weights in the mass_distribution)
+    pub mass_distribution: Option<Vec<(String, Decimal)>>,
 }
 
 #[cw_ownable_execute]
@@ -211,6 +218,7 @@ pub enum QueryMsg {
     Distributable {
         /// The time or none to use the current time.
         t: Option<Timestamp>,
+        owner: Option<String>,
     },
     /// Gets the current value of `vested(t)`. If `t` is `None`, the
     /// current time is used.

@@ -1,8 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, Uint128,
+    from_json, to_json_binary, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128
 };
 #[cfg(feature = "staking")]
 use cosmwasm_std::{
@@ -16,7 +15,7 @@ use cw_utils::{must_pay, nonpayable};
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ReceiveMsg};
-use crate::state::{PAYMENT, UNBONDING_DURATION_SECONDS};
+use crate::state::{MASS_DISTRIBUTE, PAYMENT, UNBONDING_DURATION_SECONDS};
 use crate::vesting::{Status, VestInit};
 
 const CONTRACT_NAME: &str = "crates.io:cw-vesting";
@@ -48,12 +47,18 @@ pub fn instantiate(
             start_time,
             duration_seconds: msg.vesting_duration_seconds,
             denom,
-            recipient,
+            recipient: recipient.clone(),
             title: msg.title,
             description: msg.description,
         },
     )?;
     UNBONDING_DURATION_SECONDS.save(deps.storage, &msg.unbonding_duration_seconds)?;
+
+    let distr = match msg.mass_distribution {
+        Some(d) => d,
+        None => vec![(recipient.to_string(), Decimal::one())],
+    };
+    MASS_DISTRIBUTE.set_weights(deps.storage, &distr)?;
 
     let resp: Option<CosmosMsg> = match vest.denom {
         CheckedDenom::Native(ref denom) => {
@@ -201,11 +206,11 @@ pub fn execute_distribute(
     deps: DepsMut,
     request: Option<Uint128>,
 ) -> Result<Response, ContractError> {
-    let msg = PAYMENT.distribute(deps.storage, env.block.time, request)?;
+    let msgs = PAYMENT.distribute(deps.storage, env.block.time, request)?;
 
     Ok(Response::new()
         .add_attribute("method", "distribute")
-        .add_message(msg))
+        .add_messages(msgs))
 }
 
 pub fn execute_withdraw_canceled_payment(
@@ -467,10 +472,11 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Ownership {} => to_json_binary(&cw_ownable::get_ownership(deps.storage)?),
         QueryMsg::Info {} => to_json_binary(&PAYMENT.get_vest(deps.storage)?),
-        QueryMsg::Distributable { t } => to_json_binary(&PAYMENT.distributable(
+        QueryMsg::Distributable { t, owner  } => to_json_binary(&PAYMENT.distributable(
             deps.storage,
             &PAYMENT.get_vest(deps.storage)?,
             t.unwrap_or(env.block.time),
+            owner,
         )?),
         QueryMsg::Stake(q) => PAYMENT.query_stake(deps.storage, q),
         QueryMsg::Vested { t } => to_json_binary(

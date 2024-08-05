@@ -139,6 +139,7 @@ impl Default for InstantiateMsg {
             start_time: None,
             vesting_duration_seconds: 604800,    // one week
             unbonding_duration_seconds: 2592000, // 30 days
+            mass_distribution: None,
         }
     }
 }
@@ -652,7 +653,8 @@ fn test_illiquid_when_unfunfed() {
             .distributable(
                 deps.storage,
                 &PAYMENT.get_vest(deps.storage).unwrap(),
-                env().block.time
+                env().block.time,
+                None,
             )
             .unwrap(),
         Uint128::zero()

@@ -1,10 +1,9 @@
-use cosmwasm_std::{testing::mock_dependencies, Addr, Timestamp, Uint128};
+use cosmwasm_std::{testing::mock_dependencies, Addr, Timestamp, Uint128, Decimal};
 use cw_denom::CheckedDenom;
 use wynd_utils::CurveError;
 
 use crate::{
-    error::ContractError,
-    vesting::{Payment, Schedule, Status, Vest, VestInit},
+    error::ContractError, mass_distribute, vesting::{Payment, Schedule, Status, Vest, VestInit}
 };
 
 #[cfg(test)]
@@ -87,10 +86,14 @@ fn test_distribute_half_way() {
 fn test_distribute() {
     let storage = &mut mock_dependencies().storage;
     let payment = Payment::new("vesting", "staked", "validator", "cardinality");
+    let mass_distribute = mass_distribute::MassDistribute::new("weights");
 
     payment.initialize(storage, VestInit::default()).unwrap();
-
     payment.set_funded(storage).unwrap();
+    
+    mass_distribute
+        .set_weights(storage, &vec![("recv".to_string(), Decimal::one())])
+        .unwrap();
 
     // partially claiming increases claimed
     let msg = payment
@@ -99,12 +102,14 @@ fn test_distribute() {
 
     assert_eq!(
         msg,
-        payment
-            .get_vest(storage)
-            .unwrap()
-            .denom
-            .get_transfer_to_message(&Addr::unchecked("recv"), Uint128::new(3))
-            .unwrap()
+        vec![
+            payment
+                .get_vest(storage)
+                .unwrap()
+                .denom
+                .get_transfer_to_message(&Addr::unchecked("recv"), Uint128::new(3))
+                .unwrap()
+        ]
     );
     assert_eq!(payment.get_vest(storage).unwrap().claimed, Uint128::new(3));
 
@@ -113,6 +118,48 @@ fn test_distribute() {
             storage,
             Timestamp::from_seconds(50),
             Some(Uint128::new(50_000_000 - 3)),
+        )
+        .unwrap();
+}
+
+#[test]
+fn test_distribute_multiple() {
+    let storage = &mut mock_dependencies().storage;
+    let payment = Payment::new("vesting", "staked", "validator", "cardinality");
+    let mass_distribute = mass_distribute::MassDistribute::new("weights");
+
+    payment.initialize(storage, VestInit::default()).unwrap();
+    payment.set_funded(storage).unwrap();
+    mass_distribute
+        .set_weights(storage, &vec![
+            ("recv1".to_string(), Decimal::from_ratio(1u32, 4u32)),
+            ("recv2".to_string(), Decimal::from_ratio(1u32, 4u32)),
+            ("recv3".to_string(), Decimal::from_ratio(1u32, 4u32)),
+            ("recv4".to_string(), Decimal::from_ratio(1u32, 4u32)),
+        ])
+        .unwrap();
+
+    // partially claiming increases claimed
+    let msg = payment
+        .distribute(storage, Timestamp::from_seconds(50), Some(Uint128::new(4)))
+        .unwrap();
+
+    assert_eq!(
+        msg,
+        vec![
+            payment.get_vest(storage).unwrap().denom.get_transfer_to_message(&Addr::unchecked("recv1"), Uint128::new(1)).unwrap(),
+            payment.get_vest(storage).unwrap().denom.get_transfer_to_message(&Addr::unchecked("recv2"), Uint128::new(1)).unwrap(),
+            payment.get_vest(storage).unwrap().denom.get_transfer_to_message(&Addr::unchecked("recv3"), Uint128::new(1)).unwrap(),
+            payment.get_vest(storage).unwrap().denom.get_transfer_to_message(&Addr::unchecked("recv4"), Uint128::new(1)).unwrap(),
+        ]
+    );
+    assert_eq!(payment.get_vest(storage).unwrap().claimed, Uint128::new(4));
+
+    payment
+        .distribute(
+            storage,
+            Timestamp::from_seconds(50),
+            Some(Uint128::new(50_000_000 - 4)),
         )
         .unwrap();
 }
@@ -276,43 +323,43 @@ fn test_piecewise_linear() {
     // just check all the points as there aren't too many.
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(0))
+            .distributable(storage, &vesting, Timestamp::from_seconds(0), None)
             .unwrap(),
         Uint128::zero()
     );
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(1))
+            .distributable(storage, &vesting, Timestamp::from_seconds(1), None)
             .unwrap(),
         Uint128::zero()
     );
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(2))
+            .distributable(storage, &vesting, Timestamp::from_seconds(2), None)
             .unwrap(),
         Uint128::new(2)
     );
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(3))
+            .distributable(storage, &vesting, Timestamp::from_seconds(3), None)
             .unwrap(),
         Uint128::new(4)
     );
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(4))
+            .distributable(storage, &vesting, Timestamp::from_seconds(4), None)
             .unwrap(),
         Uint128::new(6)
     );
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(5))
+            .distributable(storage, &vesting, Timestamp::from_seconds(5), None)
             .unwrap(),
         Uint128::new(8)
     );
     assert_eq!(
         payment
-            .distributable(storage, &vesting, Timestamp::from_seconds(6))
+            .distributable(storage, &vesting, Timestamp::from_seconds(6), None)
             .unwrap(),
         Uint128::new(8)
     );

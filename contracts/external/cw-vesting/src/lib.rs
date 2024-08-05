@@ -5,6 +5,7 @@ pub mod error;
 pub mod msg;
 pub mod state;
 pub mod vesting;
+pub mod mass_distribute;
 
 pub use crate::error::ContractError;
 

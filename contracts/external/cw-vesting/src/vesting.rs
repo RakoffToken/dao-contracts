@@ -10,7 +10,7 @@ use wynd_utils::{Curve, PiecewiseLinear, SaturatingLinear};
 
 use cw_stake_tracker::{StakeTracker, StakeTrackerQuery};
 
-use crate::error::ContractError;
+use crate::{error::ContractError, mass_distribute, state::MASS_DISTRIBUTE};
 
 pub struct Payment<'a> {
     vesting: Item<'a, Vest>,
@@ -159,12 +159,23 @@ impl<'a> Payment<'a> {
         storage: &dyn Storage,
         vesting: &Vest,
         t: Timestamp,
+        owner: Option<String>,
     ) -> StdResult<Uint128> {
         let staked = self.staking.total_staked(storage, t)?;
 
         let liquid = self.liquid(vesting, staked);
         let claimable = (vesting.vested(t) - vesting.claimed).saturating_sub(vesting.slashed);
-        Ok(min(liquid, claimable))
+
+        match owner {
+            Some(addr) => {
+                let liquid_share = MASS_DISTRIBUTE.get_share(storage, addr.clone(), liquid);
+                let claimable_share = MASS_DISTRIBUTE.get_share(storage, addr.clone(), claimable);
+                return Ok(min(liquid_share, claimable_share));
+            },
+            None => {
+                return Ok(min(liquid, claimable));
+            }
+        }
     }
 
     /// Distributes vested tokens. If a specific amount is
@@ -176,10 +187,10 @@ impl<'a> Payment<'a> {
         storage: &mut dyn Storage,
         t: Timestamp,
         request: Option<Uint128>,
-    ) -> Result<CosmosMsg, ContractError> {
+    ) -> Result<Vec<CosmosMsg>, ContractError> {
         let vesting = self.vesting.load(storage)?;
 
-        let distributable = self.distributable(storage, &vesting, t)?;
+        let distributable = self.distributable(storage, &vesting, t, None)?;
         let request = request.unwrap_or(distributable);
 
         let mut vesting = vesting;
@@ -192,9 +203,7 @@ impl<'a> Payment<'a> {
                 claimable: distributable,
             })
         } else {
-            Ok(vesting
-                .denom
-                .get_transfer_to_message(&vesting.recipient, request)?)
+            Ok(MASS_DISTRIBUTE.distribute(storage, request, vesting.denom))
         }
     }
 
