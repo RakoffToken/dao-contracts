@@ -75,6 +75,7 @@ impl<'a> MassDistribute<'a> {
     }
 }
 
+#[cfg(test)]
 mod test {
     use cosmwasm_std::{testing::MockStorage, to_json_binary, Addr, CosmosMsg, Decimal, WasmMsg};
     use cw20::Cw20ExecuteMsg;
